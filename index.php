@@ -1,5 +1,11 @@
 <pre><?php
 
+	set_time_limit(0);
+	error_reporting(-1);
+	ini_set('display_errors', true);
+	ob_implicit_flush(true);
+	while(ob_get_level())ob_end_flush();
+
 	require('src/InterExec.php');
 	
 	$ext = DIRECTORY_SEPARATOR=='/' ? 'sh' : 'bat';
@@ -24,6 +30,8 @@
 		echo 'Output: '.$data.PHP_EOL;
 	});
 	$exec->run();
+	
+	?><hr/><?php
 	
 	print_r($exec);
 
