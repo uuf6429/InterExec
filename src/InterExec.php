@@ -107,7 +107,7 @@
 			}
 			
 			// start profiling execution
-			$this->taken  = microtime(true);
+			$start  = microtime(true);
 			
 			// the pipes we will be using
 			$pipes = array();
@@ -128,16 +128,22 @@
 			
 			// wait for process to finish
 			while(true){
+				// check process status
 				$stat = proc_get_status($proc);
-				if(!$stat['running']
-				 || $stat['signaled']
-				 || $stat['stopped']){
+				if(!$stat['running'] || $stat['signaled'] || $stat['stopped'])
 					break;
-				}
 
 				// this code is a bit faulty - it blocks on input, leading to a deadlock
 				$this->stdout .= stream_get_contents($pipes[1]);
 				$this->stderr .= stream_get_contents($pipes[2]);
+				
+			
+				// calculate time taken so far
+				$this->taken = microtime(true) - $start;
+			
+				// check for timeout
+				if($this->timeout && $this->taken>$this->timeout)
+					break;
 				
 				$this->fire('tick');
 			}
@@ -147,9 +153,6 @@
 			$this->return = proc_close($proc);
 			
 			$this->fire('stop', array($this->return));
-			
-			// calculate time taken
-			$this->taken = microtime(true) - $this->taken;
 
 			// return result
 			return $this;
