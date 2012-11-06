@@ -51,6 +51,12 @@
 		public $winPathFix = true;
 		
 		/**
+		 * Process resource.
+		 * @var resource
+		 */
+		public $process = null;
+		
+		/**
 		 * Array containing event callbacks.
 		 * @var array
 		 */
@@ -118,7 +124,7 @@
 			);
 			
 			// create the process
-			$proc = proc_open($cmd, $desc, $pipes, null, $this->environment);
+			$this->process = proc_open($cmd, $desc, $pipes, null, $this->environment);
 			
 			$this->fire('start');
 
@@ -129,7 +135,7 @@
 			// wait for process to finish
 			while(true){
 				// check process status
-				$stat = proc_get_status($proc);
+				$stat = proc_get_status($this->process);
 				if(!$stat['running'] || $stat['signaled'] || $stat['stopped'])
 					break;
 
@@ -150,10 +156,13 @@
 
 			// close used resources
 			foreach($pipes as $pipe)fclose($pipe);
-			$this->return = proc_close($proc);
+			$this->return = proc_close($this->process);
+			
+			// clear resource
+			$this->process = null;
 			
 			$this->fire('stop', array($this->return));
-
+			
 			// return result
 			return $this;
 		}
