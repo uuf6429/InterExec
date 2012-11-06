@@ -1,0 +1,3 @@
+@ECHO OFF
+ECHO Hi there!
+REM PAUSE
