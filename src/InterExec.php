@@ -274,7 +274,7 @@
 				$this->taken = microtime(true) - $start;
 			
 				// check for timeout
-				if($this->timeout && $this->taken>$this->timeout)
+				if($this->timeout && $this->taken > $this->timeout)
 					break;
 				
 				// sleep for a while
