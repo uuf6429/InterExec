@@ -1,3 +1,4 @@
 @ECHO OFF
 ECHO Hi there!
-PAUSE
+ECHO Another "Hi"!
+REM PAUSE

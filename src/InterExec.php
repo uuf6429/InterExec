@@ -99,20 +99,12 @@
 		 * @return mixed Value resulting from event callback.
 		 */
 		protected function fire($event, $args=array()){
+			if(!is_array($args))
+				throw new InvalidArgumentException('Event arguments should be an array');
 			if(isset($this->events[$event])){
 				array_unshift($args, $this);
 				return call_user_func_array($this->events[$event], $args);
 			}
-		}
-		
-		/**
-		 * Writes a string to process STDIN (assuming process is active).
-		 * Note: This method is useless outside event handlers.
-		 * @param string $data The stuff to throw into standard input.
-		 */
-		public function write($data=''){
-			if($this->pipes && isset($this->pipes[0]))
-				fwrite($this->pipes[0], $data);
 		}
 		
 		/**
@@ -166,26 +158,39 @@
 				if(!$stat['running'] || $stat['signaled'] || $stat['stopped'])
 					break;
 				
+				$write  = array($this->pipes[0]);
+				$read   = array($this->pipes[1], $this->pipes[2]);
+				$except = null;
+				
+				while(($r = stream_select($read, $write, $except, 0))>0){
+					
+				}
+/*
 				// handle input event
-				if(false/*$needs_stdin*/){
-					$this->fire('input');
-					// TODO shouldn't we write a \n just in case event didn't do this itself?
+				if(*$needs_stdin){
+					$data = $this->fire('input');
+					fwrite($this->pipes[0], $data ? $data : PHP_EOL);
+					fflush($this->pipes[0]);
 				}
 				
 				// handle output event
-				if(false/*$has_stdout*/){
+//				if($has_stdout){
 					$buf = stream_get_contents($this->pipes[1]);
-					$this->stdout .= $buf;
-					$this->fire('output', $buf);
-				}
+					if($buf){
+						$this->stdout .= $buf;
+						$this->fire('output', array($buf));
+					}
+//				}
 				
 				// handle error event
-				if(false/*$has_stderr*/){
+				if($has_stderr){
 					$buf = stream_get_contents($this->pipes[2]);
-					$this->stderr .= $buf;
-					$this->fire('error', $buf);
+					if($buf){
+						$this->stderr .= $buf;
+						$this->fire('error', array($buf));
+					}
 				}
-
+*/
 				// this code is a bit faulty - it blocks on input, leading to a deadlock
 				//$this->stdout .= stream_get_contents($this->pipes[1]);
 				//$this->stderr .= stream_get_contents($this->pipes[2]);
