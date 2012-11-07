@@ -51,16 +51,28 @@
 		public $winPathFix = true;
 		
 		/**
-		 * Process resource.
-		 * @var resource
+		 * Interval between ticks, in seconds (a value of zero disables interval)
+		 * @var float 
 		 */
-		public $process = null;
+		public $interval = 0;
 		
 		/**
 		 * Array containing event callbacks.
 		 * @var array
 		 */
 		protected $events = array();
+		
+		/**
+		 * Process resource.
+		 * @var resource
+		 */
+		public $process = null;
+		
+		/**
+		 * Process I/O pipes.
+		 * @var array
+		 */
+		public $pipes = null;
 		
 		/**
 		 * 
@@ -94,10 +106,22 @@
 		}
 		
 		/**
+		 * Writes a string to process STDIN (assuming process is active).
+		 * Note: This method is useless outside event handlers.
+		 * @param string $data The stuff to throw into standard input.
+		 */
+		public function write($data=''){
+			if($this->pipes && isset($this->pipes[0]))
+				fwrite($this->pipes[0], $data);
+		}
+		
+		/**
 		 * Runs the command!
 		 */
 		public function run(){
 			$cmd = $this->cmd;
+			$this->stdout = '';
+			$this->stderr = '';
 			
 			if($this->winPathFix){
 				// This hack fixes a legacy issue in popen not handling escaped command filenames on Windows.
@@ -116,7 +140,7 @@
 			$start  = microtime(true);
 			
 			// the pipes we will be using
-			$pipes = array();
+			$this->pipes = array();
 			$desc = array(
 				0 => array('pipe', 'r'), // STDIN
 				1 => array('pipe', 'w'), // STDOUT
@@ -124,25 +148,47 @@
 			);
 			
 			// create the process
-			$this->process = proc_open($cmd, $desc, $pipes, null, $this->environment);
+			$this->process = proc_open($cmd, $desc, $this->pipes, null, $this->environment);
 			
 			$this->fire('start');
 
 			// avoid blocking on pipes
-			foreach($pipes as $pipe)
+			foreach($this->pipes as $pipe)
 				stream_set_blocking($pipe, 0);
 			
 			// wait for process to finish
 			while(true){
+			
+				$this->fire('tick');
+				
 				// check process status
 				$stat = proc_get_status($this->process);
 				if(!$stat['running'] || $stat['signaled'] || $stat['stopped'])
 					break;
+				
+				// handle input event
+				if(false/*$needs_stdin*/){
+					$this->fire('input');
+					// TODO shouldn't we write a \n just in case event didn't do this itself?
+				}
+				
+				// handle output event
+				if(false/*$has_stdout*/){
+					$buf = stream_get_contents($this->pipes[1]);
+					$this->stdout .= $buf;
+					$this->fire('output', $buf);
+				}
+				
+				// handle error event
+				if(false/*$has_stderr*/){
+					$buf = stream_get_contents($this->pipes[2]);
+					$this->stderr .= $buf;
+					$this->fire('error', $buf);
+				}
 
 				// this code is a bit faulty - it blocks on input, leading to a deadlock
-				$this->stdout .= stream_get_contents($pipes[1]);
-				$this->stderr .= stream_get_contents($pipes[2]);
-				
+				//$this->stdout .= stream_get_contents($this->pipes[1]);
+				//$this->stderr .= stream_get_contents($this->pipes[2]);
 			
 				// calculate time taken so far
 				$this->taken = microtime(true) - $start;
@@ -151,11 +197,15 @@
 				if($this->timeout && $this->taken>$this->timeout)
 					break;
 				
-				$this->fire('tick');
+				// sleep for a while
+				if($this->interval)
+					usleep($this->interval * 1000000);
+				
 			}
 
 			// close used resources
-			foreach($pipes as $pipe)fclose($pipe);
+			foreach($this->pipes as $pipe)fclose($pipe);
+			$this->pipes = null;
 			$this->return = proc_close($this->process);
 			
 			// clear resource
