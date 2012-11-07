@@ -57,6 +57,12 @@
 		public $interval = 0;
 		
 		/**
+		 * Size of buffer for reading from pipes.
+		 * @var integer
+		 */
+		public $bufsize = 4096;
+		
+		/**
 		 * Array containing event callbacks.
 		 * @var array
 		 */
@@ -74,12 +80,18 @@
 		 */
 		public $pipes = null;
 		
+		const STDIN  = 0;
+		const STDOUT = 1;
+		const STDERR = 2;
+		
 		/**
-		 * 
+		 * Creates new instance.
 		 * @param string $cmd The command line to execute.
+		 * @param array $env (Optional) Environment variables.
 		 */
-		public function __construct($cmd){
+		public function __construct($cmd, $env = null){
 			$this->cmd = $cmd;
+			$this->environment = $env;
 		}
 		
 		/**
@@ -108,7 +120,20 @@
 		}
 		
 		/**
+		 * Returns whether process is currently running or not.
+		 * @return boolean
+		 */
+		public function is_running(){
+			if(is_resource($this->process)){
+				$stat = proc_get_status($this->process);
+				return !(!$stat['running'] || $stat['signaled'] || $stat['stopped']);
+			}
+			return false;
+		}
+		
+		/**
 		 * Runs the command!
+		 * @return InterExec
 		 */
 		public function run(){
 			$cmd = $this->cmd;
@@ -134,9 +159,9 @@
 			// the pipes we will be using
 			$this->pipes = array();
 			$desc = array(
-				0 => array('pipe', 'r'), // STDIN
-				1 => array('pipe', 'w'), // STDOUT
-				2 => array('pipe', 'w')  // STDERR
+				self::STDIN  => array('pipe', 'r'), // STDIN
+				self::STDOUT => array('pipe', 'w'), // STDOUT
+				self::STDERR => array('pipe', 'w')  // STDERR
 			);
 			
 			// create the process
@@ -147,24 +172,74 @@
 			// avoid blocking on pipes
 			foreach($this->pipes as $pipe)
 				stream_set_blocking($pipe, 0);
-			
+
 			// wait for process to finish
 			while(true){
 			
 				$this->fire('tick');
 				
-				// check process status
-				$stat = proc_get_status($this->process);
-				if(!$stat['running'] || $stat['signaled'] || $stat['stopped'])
+				// if process quit, break main loop
+				if(!$this->is_running()){
 					break;
-				
-				$write  = array($this->pipes[0]);
-				$read   = array($this->pipes[1], $this->pipes[2]);
-				$except = null;
-				
-				while(($r = stream_select($read, $write, $except, 0))>0){
-					
 				}
+				
+				// pipe stream wrappers
+				$w = array($this->pipes[self::STDIN]);
+				$r = array($this->pipes[self::STDOUT], $this->pipes[self::STDERR]);
+				$e = null;
+				
+				// handle any pending I/O
+				while(stream_select($r, $w, $e, null/*, 25000*/) > 0){
+					
+					// handle STDOUT, STDERR
+					foreach($r as $h){
+						// clear the buffer
+						$buf = '';
+						
+						// read data into buffer
+						if(in_array($h, $this->pipes)){
+							while(!feof($h)){
+								$buf .= fread($h, $this->bufsize);
+							}
+						}
+
+						// if buffer is not empty...
+						if($buf!==''){
+							// fire output event
+							if($h===$this->pipes[self::STDOUT]){
+								$this->stdout .= $buf;
+								$this->fire('output', array($buf));
+							}
+
+							// fire error event
+							if($h===$this->pipes[self::STDERR]){
+								$this->stderr .= $buf;
+								$this->fire('error', array($buf));
+							}
+						}
+					}
+					
+					// handle STDIN
+					foreach($w as $h){
+						// fire input event
+						if($h===$this->pipes[self::STDIN]){
+							$data = $this->fire('input');
+							fwrite($this->pipes[self::STDIN], $data ? $data : PHP_EOL);
+							fflush($this->pipes[self::STDIN]);
+						}
+					}
+					
+					// if process quit, break I/O loop
+					if(!$this->is_running()){
+						break;
+					}
+					
+					// pipe stream wrappers (reset modified arrays)
+					$w = array($this->pipes[self::STDIN]);
+					$r = array($this->pipes[self::STDOUT], $this->pipes[self::STDERR]);
+					$e = null;
+				}
+				
 /*
 				// handle input event
 				if(*$needs_stdin){
@@ -218,7 +293,7 @@
 			
 			$this->fire('stop', array($this->return));
 			
-			// return result
+			// return result (for chaining)
 			return $this;
 		}
 	}

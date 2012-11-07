@@ -1,4 +1,4 @@
 @ECHO OFF
-ECHO Hi there!
-ECHO Another "Hi"!
+SET /p name=Enter your name: 
+ECHO Hello, %name%!
 REM PAUSE

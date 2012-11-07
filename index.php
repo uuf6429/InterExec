@@ -20,7 +20,7 @@
 		writeln(str_repeat('-', 80));
 	}
 	
-	writeln(str_repeat(' ', 1024));
+	writeln('EXECUTION EVENT LOG'.str_repeat(' ', 1024));
 
 	require('src/InterExec.php');
 	
@@ -44,6 +44,7 @@
 	});
 	$exec->on('input', function($exec){
 		writeln('Input');
+		return 'Chris'.PHP_EOL;
 	});
 	$exec->on('output', function($exec, $data){
 		writeln('Output: '.$data);
@@ -54,6 +55,8 @@
 	$exec->run();
 	
 	writehr();
+	
+	writeln('EXECUTION CONTEXT');
 	
 	print_r($exec);
 
