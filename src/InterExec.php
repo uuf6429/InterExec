@@ -132,6 +132,17 @@
 		}
 		
 		/**
+		 * Returns whether stream currently has pending content or not.
+		 * @param resource $stream The stream resource.
+		 * @return boolean True if there is unread content, false otherwise.
+		 */
+		protected function stream_has_content($stream){
+			$stat = stream_get_meta_data($stream);
+			//print_r($stat);
+			return !$stat['eof'];// && !$stat['blocked'];
+		}
+		
+		/**
 		 * Runs the command!
 		 * @return InterExec
 		 */
@@ -140,21 +151,23 @@
 			$this->stdout = '';
 			$this->stderr = '';
 			
-			if($this->winPathFix){
+			if($this->winPathFix && DIRECTORY_SEPARATOR=='\\'){
 				// This hack fixes a legacy issue in popen not handling escaped command filenames on Windows.
 				// Basically, if we're on windows and the first command part is double quoted, we CD into the
 				// directory and execute the command from there.
 				// Example: '"C:\a test\b.exe" -h'  ->  'cd "C:\a test\" && b.exe -h'
-				$uname = strtolower(php_uname());
-				$is_win = (strpos($uname,'win')!==false) && (strpos($uname,'darwin')===false);
-				if($is_win && is_string($ok = preg_replace(
-						'/^(\s*)"([^"]*\\\\)(.*?)"(.*)/s', // pattern
-						'$1cd "$2" && "$3" $4',            // replacement
-						$cmd ))) $cmd = $ok;               // success!
+				$cmd = trim(preg_replace(
+					'/^\s*"([^"]+?)\\\\([^\\\\]+)"\s?(.*)/s',
+					'cd "$1" && "$2" $3',
+					$cmd
+				));
 			}
 			
 			// start profiling execution
 			$start  = microtime(true);
+			
+			// contains last text returned by stdout
+			$lastBuffer = '';
 			
 			// the pipes we will be using
 			$this->pipes = array();
@@ -170,8 +183,9 @@
 			$this->fire('start');
 
 			// avoid blocking on pipes
-			foreach($this->pipes as $pipe)
-				stream_set_blocking($pipe, 0);
+			//foreach($this->pipes as $pipe)
+			//	stream_set_blocking($pipe, 0);
+			stream_set_blocking($this->pipes[self::STDIN], 0);
 
 			// wait for process to finish
 			while(true){
@@ -189,7 +203,12 @@
 				$e = null;
 				
 				// handle any pending I/O
-				while(stream_select($r, $w, $e, null/*, 25000*/) > 0){
+				if(stream_select($r, $w, $e, null/*, 25000*/) > 0){
+
+//$ts = array(self::STDIN=>'I',self::STDOUT=>'O',self::STDERR=>'E'); $t = '';
+//$pa = array_merge(array_values($r), array_values($w));
+//foreach($pa as $h)$t .= ($p=array_search($h, $this->pipes))!==false ? $ts[$p] : 'U';
+//echo '['.$t.'] stream selected'.PHP_EOL;
 					
 					// handle STDOUT, STDERR
 					foreach($r as $h){
@@ -197,22 +216,27 @@
 						$buf = '';
 						
 						// read data into buffer
-						if(in_array($h, $this->pipes)){
-							while(!feof($h)){
+						$t = array_search($h, $this->pipes);
+						if($t!==false /*TEST->*/&& $t != self::STDERR/*<-TEST*/){
+//echo '['.($t==self::STDOUT ? 'STDOUT' : 'STDERR').'] reading...'.PHP_EOL;
+							if($this->stream_has_content($h)){
+//echo '['.($t==self::STDOUT ? 'STDOUT' : 'STDERR').'] reading chunk...';
 								$buf .= fread($h, $this->bufsize);
+//echo var_export($buf, true).PHP_EOL;
 							}
 						}
 
 						// if buffer is not empty...
-						if($buf!==''){
+						if($buf !== ''){
 							// fire output event
-							if($h===$this->pipes[self::STDOUT]){
+							if($t == self::STDOUT){
 								$this->stdout .= $buf;
+								$lastBuffer = $buf;
 								$this->fire('output', array($buf));
 							}
 
 							// fire error event
-							if($h===$this->pipes[self::STDERR]){
+							if($t == self::STDERR){
 								$this->stderr .= $buf;
 								$this->fire('error', array($buf));
 							}
@@ -223,9 +247,11 @@
 					foreach($w as $h){
 						// fire input event
 						if($h===$this->pipes[self::STDIN]){
-							$data = $this->fire('input');
+//echo '[STDIN] writing...'.PHP_EOL;
+							$data = $this->fire('input', array($lastBuffer));
 							fwrite($this->pipes[self::STDIN], $data ? $data : PHP_EOL);
 							fflush($this->pipes[self::STDIN]);
+							$lastBuffer = '';
 						}
 					}
 					
@@ -233,40 +259,9 @@
 					if(!$this->is_running()){
 						break;
 					}
-					
-					// pipe stream wrappers (reset modified arrays)
-					$w = array($this->pipes[self::STDIN]);
-					$r = array($this->pipes[self::STDOUT], $this->pipes[self::STDERR]);
-					$e = null;
 				}
 				
-/*
-				// handle input event
-				if(*$needs_stdin){
-					$data = $this->fire('input');
-					fwrite($this->pipes[0], $data ? $data : PHP_EOL);
-					fflush($this->pipes[0]);
-				}
-				
-				// handle output event
-//				if($has_stdout){
-					$buf = stream_get_contents($this->pipes[1]);
-					if($buf){
-						$this->stdout .= $buf;
-						$this->fire('output', array($buf));
-					}
-//				}
-				
-				// handle error event
-				if($has_stderr){
-					$buf = stream_get_contents($this->pipes[2]);
-					if($buf){
-						$this->stderr .= $buf;
-						$this->fire('error', array($buf));
-					}
-				}
-*/
-				// this code is a bit faulty - it blocks on input, leading to a deadlock
+				// this is the old, faulty code - it blocks on input, leading to a deadlock
 				//$this->stdout .= stream_get_contents($this->pipes[1]);
 				//$this->stderr .= stream_get_contents($this->pipes[2]);
 			
@@ -274,21 +269,20 @@
 				$this->taken = microtime(true) - $start;
 			
 				// check for timeout
-				if($this->timeout && $this->taken > $this->timeout)
+				if($this->timeout && $this->taken > $this->timeout){
 					break;
+				}
 				
 				// sleep for a while
-				if($this->interval)
+				if($this->interval){
 					usleep($this->interval * 1000000);
-				
+				}
 			}
 
-			// close used resources
+			// close and clean used resources
 			foreach($this->pipes as $pipe)fclose($pipe);
 			$this->pipes = null;
 			$this->return = proc_close($this->process);
-			
-			// clear resource
 			$this->process = null;
 			
 			$this->fire('stop', array($this->return));

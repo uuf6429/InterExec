@@ -42,9 +42,15 @@
 	$exec->on('tick', function($exec){
 		writeln('Tick');
 	});
-	$exec->on('input', function($exec){
-		writeln('Input');
-		return 'Chris'.PHP_EOL;
+	$exec->on('input', function($exec, $last){
+		$resp = array(
+			'Enter your name: ' => 'Chris',
+			'And your surname: ' => 'Sciberras',
+			'Press any key to continue . . . ' => ''
+		);
+		$data = isset($resp[$last]) ? $resp[$last] : '';
+		writeln('Input: '.$data);
+		return $data.PHP_EOL;
 	});
 	$exec->on('output', function($exec, $data){
 		writeln('Output: '.$data);
