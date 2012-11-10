@@ -126,6 +126,12 @@ Runs the specified command.
  - **start** - Triggered when program starts.
  - **stop** - Triggered when program ends.
  - **tick** - Triggered on each execution step (see interval property).
- - **input**[last]:data - Called when program is requesting input.
- - **output**[data] - Called when program sent some output.
- - **error**[data] - Called when program signals erroneous state.
+ - **input**($last):$data - Called when program is requesting input.
+ Argument `last` contains last output buffer.
+ Callback should return data to be sent to program.
+ - **output**($data) - Called when program sent some output.
+ Argument `data` contains the standard output fragment.
+ - **error**(data) - Called when program signals erroneous state.
+ Argument `data` contains the standard error fragment.
+
+**All callbacks will receive the command object making triggering the event as first parameter.**
