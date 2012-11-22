@@ -61,11 +61,11 @@ Stop
 
 ### Properties
 
-    string $cmd
+    string $command_to_run
 
 The command to run.
 		
-    array|null $environment
+    array|null $environment_vars
 
 Environment variables (null to use existing variables).
 
@@ -85,29 +85,33 @@ All of the program's error output till now.
 
 Program's exit code (obviously only set after program quits).
 		
-	float $taken
+	float $time_start
+
+Timestamp of when execution started.
+		
+	float $time_taken
 
 The time taken for the program to run and close.
 		
-	boolean $winPathFix
+	boolean $fix_windows_path
 
 If enabled, fixes a problem with popen not allow spaces inside program path (even when quoted).
 		
-	float $interval
+	float $tick_interval
 
-Interval between ticks, in seconds (a value of zero disables interval)
-		
-	integer $bufsize
+Interval between ticks, in seconds (a value of zero disables interval).
 
-Size of buffer for reading from pipes.
+    resource $process_handle
+
+Resource handle for currently running command process (or null if none running).
 
 ### Methods
 
-	__construct($cmd [, $env])
+	__construct($command_to_run [, $environment_vars])
 
 Constructs new execution instance. 
-string $cmd The command line to execute.
-array $env (Optional) Environment variables.
+string $command_to_run The command line to execute.
+array $environment_vars (Optional) Environment variables.
 
 	on($event, $callback)
 

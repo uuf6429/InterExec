@@ -6,13 +6,13 @@
 		 * The command to run.
 		 * @var string
 		 */
-		public $cmd = '';
+		public $command_to_run = '';
 		
 		/**
 		 * Environment variables (null to use existing variables).
 		 * @var array|null 
 		 */
-		public $environment = null;
+		public $environment_vars = null;
 		
 		/**
 		 * Time, in seconds, after which command is forcefully aborted.
@@ -39,28 +39,28 @@
 		public $return = 0;
 		
 		/**
+		 * Timestamp in seconds of start of execution.
+		 * @var float
+		 */
+		public $time_start = 0.0;
+		
+		/**
 		 * The time taken for the program to run and close.
 		 * @var float
 		 */
-		public $taken = 0;
+		public $time_taken = 0;
 		
 		/**
-		 * If enabled, fixes a problem with popen not allow spaces inside program path (even when quoted).
+		 * If enabled, fixes a problem with popen not allowing spaces inside program path (even when quoted).
 		 * @var boolean
 		 */
-		public $winPathFix = true;
+		public $fix_windows_path = true;
 		
 		/**
 		 * Interval between ticks, in seconds (a value of zero disables interval)
 		 * @var float 
 		 */
-		public $interval = 0;
-		
-		/**
-		 * Size of buffer for reading from pipes.
-		 * @var integer
-		 */
-		public $bufsize = 4096;
+		public $tick_interval = 0;
 		
 		/**
 		 * Array containing event callbacks.
@@ -72,7 +72,7 @@
 		 * Process resource.
 		 * @var resource
 		 */
-		public $process = null;
+		public $process_handle = null;
 		
 		/**
 		 * Process I/O pipes.
@@ -86,12 +86,12 @@
 		
 		/**
 		 * Creates new instance.
-		 * @param string $cmd The command line to execute.
-		 * @param array $env (Optional) Environment variables.
+		 * @param string $command_to_run The command line to execute.
+		 * @param array $environment_vars (Optional) Environment variables.
 		 */
-		public function __construct($cmd, $env = null){
-			$this->cmd = $cmd;
-			$this->environment = $env;
+		public function __construct($command_to_run, $environment_vars = null){
+			$this->command_to_run = $command_to_run;
+			$this->environment_vars = $environment_vars;
 		}
 		
 		/**
@@ -124,8 +124,8 @@
 		 * @return boolean
 		 */
 		public function is_running(){
-			if(is_resource($this->process)){
-				$stat = proc_get_status($this->process);
+			if(is_resource($this->process_handle)){
+				$stat = proc_get_status($this->process_handle);
 				return !(!$stat['running'] || $stat['signaled'] || $stat['stopped']);
 			}
 			return false;
@@ -143,50 +143,52 @@
 		}
 		
 		/**
-		 * Runs the command!
-		 * @return InterExec
+		 * This hack fixes a legacy issue in popen not handling escaped command filenames on Windows.
+		 * Basically, if we're on windows and the first command part is double quoted, we CD into the
+		 * directory and execute the command from there.
+		 * @example: '"C:\a test\b.exe" -h'  ->  'cd "C:\a test\" && b.exe -h'
+		 * @param string $commandPath The command to fix.
+		 * @return string The command with the path fixed.
 		 */
-		public function run(){
-			$cmd = $this->cmd;
+		protected function fix_windows_command_path($commandPath){
+			return trim(preg_replace(
+				'/^\s*"([^"]+?)\\\\([^\\\\]+)"\s?(.*)/s',
+				'cd "$1" && "$2" $3',
+				$commandPath
+			));
+		}
+		
+		protected function run_startup(){
+			// initialize variables
+			if($this->fix_windows_path && DIRECTORY_SEPARATOR=='\\'){
+				$this->command_to_run = $this->fix_windows_command_path($this->command_to_run);
+			}
 			$this->stdout = '';
 			$this->stderr = '';
-			
-			if($this->winPathFix && DIRECTORY_SEPARATOR=='\\'){
-				// This hack fixes a legacy issue in popen not handling escaped command filenames on Windows.
-				// Basically, if we're on windows and the first command part is double quoted, we CD into the
-				// directory and execute the command from there.
-				// Example: '"C:\a test\b.exe" -h'  ->  'cd "C:\a test\" && b.exe -h'
-				$cmd = trim(preg_replace(
-					'/^\s*"([^"]+?)\\\\([^\\\\]+)"\s?(.*)/s',
-					'cd "$1" && "$2" $3',
-					$cmd
-				));
-			}
-			
-			// start profiling execution
-			$start  = microtime(true);
-			
-			// contains last text returned by stdout
-			$lastBuffer = '';
-			
-			// the pipes we will be using
 			$this->pipes = array();
-			$desc = array(
-				self::STDIN  => array('pipe', 'r'), // STDIN
-				self::STDOUT => array('pipe', 'w'), // STDOUT
-				self::STDERR => array('pipe', 'w')  // STDERR
+			$this->time_start = microtime(true);
+			$this->_last_buffer_data = '';
+			
+			// create process and pipes
+			$this->process_handle = proc_open(
+				$this->command_to_run,
+				array(
+					self::STDIN  => array('pipe', 'r'), // STDIN
+					self::STDOUT => array('pipe', 'w'), // STDOUT
+					self::STDERR => array('pipe', 'w')  // STDERR
+				),
+				$this->pipes,
+				null,
+				$this->environment_vars
 			);
 			
-			// create the process
-			$this->process = proc_open($cmd, $desc, $this->pipes, null, $this->environment);
-			
 			$this->fire('start');
-
+			
 			// avoid blocking on pipes
-			//foreach($this->pipes as $pipe)
-			//	stream_set_blocking($pipe, 0);
 			stream_set_blocking($this->pipes[self::STDIN], 0);
-
+		}
+		
+		protected function run_mainloop(){
 			// wait for process to finish
 			while(true){
 			
@@ -204,11 +206,6 @@
 				
 				// handle any pending I/O
 				if(stream_select($r, $w, $e, null/*, 25000*/) > 0){
-
-//$ts = array(self::STDIN=>'I',self::STDOUT=>'O',self::STDERR=>'E'); $t = '';
-//$pa = array_merge(array_values($r), array_values($w));
-//foreach($pa as $h)$t .= ($p=array_search($h, $this->pipes))!==false ? $ts[$p] : 'U';
-//echo '['.$t.'] stream selected'.PHP_EOL;
 					
 					// handle STDOUT, STDERR
 					foreach($r as $h){
@@ -218,11 +215,8 @@
 						// read data into buffer
 						$t = array_search($h, $this->pipes);
 						if($t!==false /*TEST->*/&& $t != self::STDERR/*<-TEST*/){
-//echo '['.($t==self::STDOUT ? 'STDOUT' : 'STDERR').'] reading...'.PHP_EOL;
 							if($this->stream_has_content($h)){
-//echo '['.($t==self::STDOUT ? 'STDOUT' : 'STDERR').'] reading chunk...';
 								$buf .= fread($h, $this->bufsize);
-//echo var_export($buf, true).PHP_EOL;
 							}
 						}
 
@@ -247,7 +241,6 @@
 					foreach($w as $h){
 						// fire input event
 						if($h===$this->pipes[self::STDIN]){
-//echo '[STDIN] writing...'.PHP_EOL;
 							$data = $this->fire('input', array($lastBuffer));
 							fwrite($this->pipes[self::STDIN], $data ? $data : PHP_EOL);
 							fflush($this->pipes[self::STDIN]);
@@ -260,32 +253,45 @@
 						break;
 					}
 				}
-				
-				// this is the old, faulty code - it blocks on input, leading to a deadlock
-				//$this->stdout .= stream_get_contents($this->pipes[1]);
-				//$this->stderr .= stream_get_contents($this->pipes[2]);
 			
 				// calculate time taken so far
-				$this->taken = microtime(true) - $start;
+				$this->time_taken = microtime(true) - $this->time_start;
 			
 				// check for timeout
 				if($this->timeout && $this->taken > $this->timeout){
+					// TODO $this->signal(self::TIMEOUT);
 					break;
 				}
 				
 				// sleep for a while
-				if($this->interval){
-					usleep($this->interval * 1000000);
+				if($this->tick_interval){
+					usleep($this->tick_interval * 1000000);
 				}
 			}
-
+		}
+		
+		protected function run_shutdown(){
 			// close and clean used resources
 			foreach($this->pipes as $pipe)fclose($pipe);
 			$this->pipes = null;
-			$this->return = proc_close($this->process);
-			$this->process = null;
+			$this->return = proc_close($this->process_handle);
+			$this->process_handle = null;
+			
+			// calculate time taken so far
+			$this->time_taken = microtime(true) - $this->time_start;
 			
 			$this->fire('stop', array($this->return));
+		}
+		
+		/**
+		 * Runs the command!
+		 * @return InterExec
+		 */
+		public function run(){
+			// run process loop
+			$this->run_startup();
+			$this->run_mainloop();
+			$this->run_shutdown();
 			
 			// return result (for chaining)
 			return $this;
