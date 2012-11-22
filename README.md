@@ -36,7 +36,8 @@ $exec->on('input', function($exec, $last){
 	$data = PHP_EOL; // default input, to unblock stream
 	if($last == 'Enter your name: ')
 		$data = 'John Doe'.PHP_EOL;
-	echo '&lt; '.$data.'<br/>';
+	echo '&lt; '.$data.'<br/>'; 
+	return $data;
 });
 $exec->on('stop', function(){
 	echo 'Stop<br/>';
