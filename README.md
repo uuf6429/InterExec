@@ -104,6 +104,10 @@ Interval between ticks, in seconds (a value of zero disables interval).
     resource $process_handle
 
 Resource handle for currently running command process (or null if none running).
+		
+	integer $data_buffer_size
+
+Size of buffer for reading from pipes.
 
 ### Methods
 

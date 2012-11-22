@@ -75,6 +75,12 @@
 		public $process_handle = null;
 		
 		/**
+		 * Size of buffer for reading from pipes.
+		 * @var integer
+		 */
+		public $data_buffer_size = 4096;
+		
+		/**
 		 * Process I/O pipes.
 		 * @var array
 		 */
@@ -216,7 +222,7 @@
 						$t = array_search($h, $this->pipes);
 						if($t!==false /*TEST->*/&& $t != self::STDERR/*<-TEST*/){
 							if($this->stream_has_content($h)){
-								$buf .= fread($h, $this->bufsize);
+								$buf .= fread($h, $this->data_buffer_size);
 							}
 						}
 
