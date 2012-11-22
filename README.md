@@ -26,12 +26,15 @@ One can interact with this batch script as follows:
 
 ```php
 $exec = new InterExec('test.bat');
+
 $exec->on('start', function(){
 	echo 'Start<br/>';
 });
+
 $exec->on('output', function($exec, $data){
 	echo '&gt; '.$data.'<br/>';
 });
+
 $exec->on('input', function($exec, $last){
 	$data = PHP_EOL; // default input, to unblock stream
 	if($last == 'Enter your name: ')
@@ -39,9 +42,11 @@ $exec->on('input', function($exec, $last){
 	echo '&lt; '.$data.'<br/>'; 
 	return $data;
 });
+
 $exec->on('stop', function(){
 	echo 'Stop<br/>';
 });
+
 $exec->run();
 ```
 
