@@ -149,4 +149,4 @@ Runs the specified command.
  - **error**($data) - Called when program signals erroneous state.
  Argument `$data` contains the standard error fragment.
 
-**All callbacks will receive the command object making triggering the event as first parameter.**
+**All callbacks will receive the command object that triggered the event, as first parameter (as a solution to unavailability of `$this` in PHP object callbacks).**
