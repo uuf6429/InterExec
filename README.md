@@ -114,6 +114,10 @@ Resource handle for currently running command process (or null if none running).
 
 Size of buffer for reading from pipes.
 
+    string $pipeType
+
+Type of the pipe, InterExec::PIPE_TYPE_DEFAULT or InterExec::PIPE_TYPE_PTY
+
 ### Methods
 
 	__construct($command_to_run [, $environment_vars])
