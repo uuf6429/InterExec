@@ -88,6 +88,7 @@
 
         /**
          * Pipe type, pipe or pty (Linux only, PHP must be compiled with --enable-pty)
+         * Constants : PIPE_TYPE_DEFAULT, PIPE_TYPE_PTY
          * @var string
          */
         public $pipeType = InterExec::PIPE_TYPE_DEFAULT;
