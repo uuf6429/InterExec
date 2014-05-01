@@ -1,96 +1,105 @@
 <?php
 
 	class InterExec {
-		
+
 		/**
 		 * The command to run.
 		 * @var string
 		 */
 		public $command_to_run = '';
-		
+
 		/**
 		 * Environment variables (null to use existing variables).
-		 * @var array|null 
+		 * @var array|null
 		 */
 		public $environment_vars = null;
-		
+
 		/**
 		 * Time, in seconds, after which command is forcefully aborted.
-		 * @var integer 
+		 * @var integer
 		 */
 		public $timeout = 0;
-		
+
 		/**
 		 * All of the program's standard output till now.
 		 * @var string
 		 */
 		public $stdout = '';
-		
+
 		/**
 		 * All of the program's error output till now.
 		 * @var string
 		 */
 		public $stderr = '';
-		
+
 		/**
 		 * Program's exit code (obviously only set after program quits).
 		 * @var integer
 		 */
 		public $return = 0;
-		
+
 		/**
 		 * Timestamp in seconds of start of execution.
 		 * @var float
 		 */
 		public $time_start = 0.0;
-		
+
 		/**
 		 * The time taken for the program to run and close.
 		 * @var float
 		 */
 		public $time_taken = 0;
-		
+
 		/**
 		 * If enabled, fixes a problem with popen not allowing spaces inside program path (even when quoted).
 		 * @var boolean
 		 */
 		public $fix_windows_path = true;
-		
+
 		/**
 		 * Interval between ticks, in seconds (a value of zero disables interval)
-		 * @var float 
+		 * @var float
 		 */
 		public $tick_interval = 0;
-		
+
 		/**
 		 * Array containing event callbacks.
 		 * @var array
 		 */
 		protected $events = array();
-		
+
 		/**
 		 * Process resource.
 		 * @var resource
 		 */
 		public $process_handle = null;
-		
+
 		/**
 		 * Size of buffer for reading from pipes.
 		 * @var integer
 		 */
 		public $data_buffer_size = 4096;
-		
+
 		/**
 		 * Process I/O pipes.
 		 * @var array
 		 */
 		public $pipes = null;
-		
-		const STDIN  = 0;
+
+        /**
+         * Pipe type, pipe or pty (Linux only, PHP must be compiled with --enable-pty)
+         * @var string
+         */
+        public $pipeType = InterExec::PIPE_TYPE_DEFAULT;
+
+        const STDIN  = 0;
 		const STDOUT = 1;
 		const STDERR = 2;
-		
-		/**
+
+        const PIPE_TYPE_DEFAULT = 'pipe';
+        const PIPE_TYPE_PTY = 'pty';
+
+        /**
 		 * Creates new instance.
 		 * @param string $command_to_run The command line to execute.
 		 * @param array $environment_vars (Optional) Environment variables.
@@ -99,7 +108,7 @@
 			$this->command_to_run = $command_to_run;
 			$this->environment_vars = $environment_vars;
 		}
-		
+
 		/**
 		 * Call callback when an event is triggered.
 		 * @param string $event Name of event.
@@ -108,7 +117,7 @@
 		public function on($event, $callback){
 			$this->events[$event] = $callback;
 		}
-		
+
 		/**
 		 * Trigger an event.
 		 * @param string $event Name of event.
@@ -124,7 +133,7 @@
 				return call_user_func_array($this->events[$event], $args);
 			}
 		}
-		
+
 		/**
 		 * Returns whether process is currently running or not.
 		 * @return boolean
@@ -136,7 +145,7 @@
 			}
 			return false;
 		}
-		
+
 		/**
 		 * Returns whether stream currently has pending content or not.
 		 * @param resource $stream The stream resource.
@@ -147,7 +156,7 @@
 			//print_r($stat);
 			return !$stat['eof'];// && !$stat['blocked'];
 		}
-		
+
 		/**
 		 * This hack fixes a legacy issue in popen not handling escaped command filenames on Windows.
 		 * Basically, if we're on windows and the first command part is double quoted, we CD into the
@@ -163,7 +172,7 @@
 				$commandPath
 			));
 		}
-		
+
 		protected function run_startup(){
 			// initialize variables
 			if($this->fix_windows_path && DIRECTORY_SEPARATOR=='\\'){
@@ -174,50 +183,50 @@
 			$this->pipes = array();
 			$this->time_start = microtime(true);
 			$this->_last_buffer_data = '';
-			
+
 			// create process and pipes
 			$this->process_handle = proc_open(
 				$this->command_to_run,
 				array(
-					self::STDIN  => array('pipe', 'r'), // STDIN
-					self::STDOUT => array('pipe', 'w'), // STDOUT
-					self::STDERR => array('pipe', 'w')  // STDERR
-				),
+                    self::STDIN  => array($this->pipeType, 'r'), // STDIN
+                    self::STDOUT => array($this->pipeType, 'w'), // STDOUT
+                    self::STDERR => array($this->pipeType, 'w')  // STDERR
+                ),
 				$this->pipes,
 				null,
 				$this->environment_vars
 			);
-			
+
 			$this->fire('start');
-			
+
 			// avoid blocking on pipes
 			stream_set_blocking($this->pipes[self::STDIN], 0);
 		}
-		
+
 		protected function run_mainloop(){
 			// wait for process to finish
 			while(true){
-			
+
 				$this->fire('tick');
-				
+
 				// if process quit, break main loop
 				if(!$this->is_running()){
 					break;
 				}
-				
+
 				// pipe stream wrappers
 				$w = array($this->pipes[self::STDIN]);
 				$r = array($this->pipes[self::STDOUT], $this->pipes[self::STDERR]);
 				$e = null;
-				
+
 				// handle any pending I/O
 				if(stream_select($r, $w, $e, null/*, 25000*/) > 0){
-					
+
 					// handle STDOUT, STDERR
 					foreach($r as $h){
 						// clear the buffer
 						$buf = '';
-						
+
 						// read data into buffer
 						$t = array_search($h, $this->pipes);
 						if($t!==false /*TEST->*/&& $t != self::STDERR/*<-TEST*/){
@@ -242,7 +251,7 @@
 							}
 						}
 					}
-					
+
 					// handle STDIN
 					foreach($w as $h){
 						// fire input event
@@ -253,42 +262,42 @@
 							$lastBuffer = '';
 						}
 					}
-					
+
 					// if process quit, break I/O loop
 					if(!$this->is_running()){
 						break;
 					}
 				}
-			
+
 				// calculate time taken so far
 				$this->time_taken = microtime(true) - $this->time_start;
-			
+
 				// check for timeout
 				if($this->timeout && $this->taken > $this->timeout){
 					// TODO $this->signal(self::TIMEOUT);
 					break;
 				}
-				
+
 				// sleep for a while
 				if($this->tick_interval){
 					usleep($this->tick_interval * 1000000);
 				}
 			}
 		}
-		
+
 		protected function run_shutdown(){
 			// close and clean used resources
 			foreach($this->pipes as $pipe)fclose($pipe);
 			$this->pipes = null;
 			$this->return = proc_close($this->process_handle);
 			$this->process_handle = null;
-			
+
 			// calculate time taken so far
 			$this->time_taken = microtime(true) - $this->time_start;
-			
+
 			$this->fire('stop', array($this->return));
 		}
-		
+
 		/**
 		 * Runs the command!
 		 * @return InterExec
@@ -298,7 +307,7 @@
 			$this->run_startup();
 			$this->run_mainloop();
 			$this->run_shutdown();
-			
+
 			// return result (for chaining)
 			return $this;
 		}
