@@ -86,21 +86,21 @@
 		 */
 		public $pipes = null;
 
-        /**
-         * Pipe type, pipe or pty (Linux only, PHP must be compiled with --enable-pty)
-         * Constants : PIPE_TYPE_DEFAULT, PIPE_TYPE_PTY
-         * @var string
-         */
-        public $pipeType = InterExec::PIPE_TYPE_DEFAULT;
+		/**
+		 * Pipe type, pipe or pty (Linux only, PHP must be compiled with --enable-pty)
+		 * Constants : PIPE_TYPE_DEFAULT, PIPE_TYPE_PTY
+		 * @var string
+		 */
+		public $pipeType = InterExec::PIPE_TYPE_DEFAULT;
 
-        const STDIN  = 0;
+		const STDIN  = 0;
 		const STDOUT = 1;
 		const STDERR = 2;
 
-        const PIPE_TYPE_DEFAULT = 'pipe';
-        const PIPE_TYPE_PTY = 'pty';
+		const PIPE_TYPE_DEFAULT = 'pipe';
+		const PIPE_TYPE_PTY = 'pty';
 
-        /**
+		/**
 		 * Creates new instance.
 		 * @param string $command_to_run The command line to execute.
 		 * @param array $environment_vars (Optional) Environment variables.
@@ -189,10 +189,10 @@
 			$this->process_handle = proc_open(
 				$this->command_to_run,
 				array(
-                    self::STDIN  => array($this->pipeType, 'r'), // STDIN
-                    self::STDOUT => array($this->pipeType, 'w'), // STDOUT
-                    self::STDERR => array($this->pipeType, 'w')  // STDERR
-                ),
+					self::STDIN  => array($this->pipeType, 'r'), // STDIN
+					self::STDOUT => array($this->pipeType, 'w'), // STDOUT
+					self::STDERR => array($this->pipeType, 'w')  // STDERR
+				),
 				$this->pipes,
 				null,
 				$this->environment_vars
