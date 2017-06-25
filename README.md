@@ -1,3 +1,7 @@
+**This project is not maintained anymore, please use [symfony/process](https://github.com/symfony/process) instead.**
+
+----
+
 # InterExec
 
 Copyright 2012 Christian Sciberras & Contributors
